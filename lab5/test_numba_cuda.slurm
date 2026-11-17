@@ -20,6 +20,8 @@ module list
 export PYTHONUNBUFFERED=1
 
 srun python - <<'PY'
+import os
+import subprocess
 import sys
 
 import numpy as np
@@ -48,8 +50,20 @@ def losowanie(states, wynik):
 print("Python:", sys.version)
 print("NumPy:", np.__version__)
 print("Numba:", numba.__version__)
+print("Backend CUDA:", cuda.__file__)
+for name in (
+    "SLURM_JOB_ID", "SLURMD_NODENAME", "SLURM_JOB_GPUS", "SLURM_STEP_GPUS",
+    "CUDA_VISIBLE_DEVICES", "NUMBA_CUDA_DRIVER", "NUMBA_CUDA_USE_NVIDIA_BINDING",
+    "LD_LIBRARY_PATH", "LD_PRELOAD",
+):
+    print(f"{name}={os.environ.get(name, '(nie ustawiono)')}")
+subprocess.run(["nvidia-smi", "-L"], check=False)
 if not cuda.is_available():
     raise RuntimeError("CUDA niedostępna w przydzielonym zadaniu.")
+print("Liczba GPU widocznych dla Numby:", len(cuda.gpus))
+from numba.cuda.cudadrv.driver import driver
+with driver.get_active_context() as context:
+    print("Indeks GPU aktywnego kontekstu:", context.devnum)
 print("GPU:", cuda.get_current_device().name)
 
 n = 1000
