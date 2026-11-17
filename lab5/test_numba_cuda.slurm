@@ -19,7 +19,7 @@ module load "${CUDA_MODULE:-cuda/12.9.1}"
 module list
 export PYTHONUNBUFFERED=1
 
-srun python - <<'PY'
+srun python -X faulthandler - <<'PY'
 import os
 import subprocess
 import sys
@@ -71,16 +71,26 @@ threads = 256
 blocks = (n + threads - 1) // threads
 a = np.arange(n, dtype=np.float64)
 b = np.ones(n, dtype=np.float64)
+print("ETAP: transfer tablicy a na GPU", flush=True)
 d_a = cuda.to_device(a)
+print("ETAP: transfer tablicy b na GPU", flush=True)
 d_b = cuda.to_device(b)
+print("ETAP: alokacja tablicy wynikowej na GPU", flush=True)
 d_wynik = cuda.device_array(n, dtype=np.float64)
 
+print("ETAP: kompilacja kernela dodawania", flush=True)
+dodawanie.specialize(d_a, d_b, d_wynik)
+print("ETAP: uruchomienie kernela dodawania", flush=True)
 dodawanie[blocks, threads](d_a, d_b, d_wynik)
+print("ETAP: synchronizacja po dodawaniu", flush=True)
 cuda.synchronize()
+print("ETAP: transfer wyniku na CPU", flush=True)
 np.testing.assert_array_equal(d_wynik.copy_to_host(), a + b)
 print("OK: kompilacja kernela, dodawanie i transfery CPU/GPU.")
 
+print("ETAP: inicjalizacja generatora GPU", flush=True)
 states = create_xoroshiro128p_states(n, seed=1)
+print("ETAP: uruchomienie kernela losowania", flush=True)
 losowanie[blocks, threads](states, d_wynik)
 cuda.synchronize()
 wynik = d_wynik.copy_to_host()
