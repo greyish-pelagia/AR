@@ -5,24 +5,39 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=00:05:00
+#SBATCH --time=00:10:00
 #SBATCH --mem=2G
 #SBATCH --output=test-numba-cuda-%j.out
 #SBATCH --error=test-numba-cuda-%j.err
 
 # Uruchomienie: sbatch --account=NAZWA_KONTA_GPU test_numba_cuda.slurm
-# Konkretna wersja Numby: NUMBA_MODULE=numba/WERSJA sbatch --account=... test_numba_cuda.slurm
+# Wymaga uv w PATH oraz dostępu do pobrania Pythona i pakietów.
 set -euo pipefail
 
-module load "${NUMBA_MODULE:-numba}"
+module purge
 module load "${CUDA_MODULE:-cuda/12.9.1}"
 module list
+command -v uv
+
+export UV_PROJECT_ENVIRONMENT="${SCRATCH:?Wymagana zmienna SCRATCH}/uv/lab5"
+export UV_CACHE_DIR="$SCRATCH/uv/.cache"
+export UV_PYTHON_INSTALL_DIR="$SCRATCH/uv/python"
+export PYTHONNOUSERSITE=1
+unset PYTHONPATH PYTHONHOME
 export PYTHONUNBUFFERED=1
 
-srun python -X faulthandler - <<'PY'
+# Python i pakiety w SCRATCH; biblioteki CUDA pochodzą wyłącznie z modułu.
+# Bez dodatku numba-cuda[cu12], który instalowałby także CUDA z PyPI.
+uv venv --allow-existing --managed-python --python 3.12 "$UV_PROJECT_ENVIRONMENT"
+uv pip install --python "$UV_PROJECT_ENVIRONMENT/bin/python" \
+    'numpy==2.2.6' 'numba==0.62.0' 'numba-cuda==0.30.4' \
+    'cuda-bindings>=12.9.1,<13'
+
+srun "$UV_PROJECT_ENVIRONMENT/bin/python" -X faulthandler - <<'PY'
 import os
 import subprocess
 import sys
+from importlib.metadata import version
 
 import numpy as np
 import numba
@@ -48,8 +63,11 @@ def losowanie(states, wynik):
 
 
 print("Python:", sys.version)
+print("Interpreter:", sys.executable)
 print("NumPy:", np.__version__)
 print("Numba:", numba.__version__)
+print("numba-cuda:", version("numba-cuda"))
+print("cuda-bindings:", version("cuda-bindings"))
 print("Backend CUDA:", cuda.__file__)
 for name in (
     "SLURM_JOB_ID", "SLURMD_NODENAME", "SLURM_JOB_GPUS", "SLURM_STEP_GPUS",
